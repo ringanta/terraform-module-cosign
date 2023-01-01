@@ -25,6 +25,11 @@ import (
 var signingKey string
 var moduleSignatureSuffix string
 var uploadSignature bool
+var rootOptions = &options.RootOptions{
+	OutputFile: "",
+	Verbose:    false,
+	Timeout:    options.DefaultTimeout,
+}
 
 // signCmd represents the sign command
 var signCmd = &cobra.Command{
@@ -45,11 +50,6 @@ var signCmd = &cobra.Command{
    terraform-module-cosign sign --key cosign.key --upload-signature s3::https://example-bucket.s3.ap-southeast-1.amazonaws.com/example-module.zip`,
 	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		ro := &options.RootOptions{
-			OutputFile: "",
-			Verbose:    false,
-			Timeout:    options.DefaultTimeout,
-		}
 
 		ko := options.KeyOpts{
 			KeyRef:                   signingKey,
@@ -114,7 +114,7 @@ var signCmd = &cobra.Command{
 
 			// Sign module archive
 			moduleSignature := fmt.Sprintf("%s%s", module, moduleSignatureSuffix)
-			if _, err := sign.SignBlobCmd(ro, ko, module, true, moduleSignature, "", false); err != nil {
+			if _, err := sign.SignBlobCmd(rootOptions, ko, module, true, moduleSignature, "", false); err != nil {
 				log.Fatalf("Error signing [%s]: %v", module, err)
 			}
 

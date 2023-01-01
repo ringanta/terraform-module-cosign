@@ -5,7 +5,12 @@ package cmd
 
 import (
 	"fmt"
+	"log"
+	"os"
+	"strings"
 
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
 	"github.com/spf13/cobra"
 )
 
@@ -25,8 +30,45 @@ var verifyCmd = &cobra.Command{
   terraform-module-cosign verify --key cosign.pub .`,
 	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+		ko := options.KeyOpts{
+			KeyRef: verificationKey,
+		}
+
+		verifyModuleArchiveCmd := &verify.VerifyBlobCmd{
+			KeyOpts:        ko,
+			CertRef:        "",
+			IgnoreSCT:      true,
+			SCTRef:         "",
+			SkipTlogVerify: true,
+		}
+
 		for _, arg := range args {
+			var modules [1]string
+
 			fmt.Printf("verify called with key: %s, suffix: %s, arg: %s\n", verificationKey, moduleSignatureSuffix, arg)
+			if strings.HasPrefix(arg, "s3::") {
+				// Todo: Handle verification of Terraform module archive on S3
+			} else {
+				fileInfo, err := os.Stat(arg)
+				if err != nil {
+					log.Fatalf("Invalid argument value %s: %v", arg, err)
+				}
+
+				if fileInfo.IsDir() {
+					// Assume terraform module directory and read module calls
+				} else {
+					modules[0] = arg
+				}
+			}
+
+			// Verify module archive
+			for _, module := range modules {
+				moduleSignature := fmt.Sprintf("%s%s", module, moduleSignatureSuffix)
+				verifyModuleArchiveCmd.SigRef = moduleSignature
+				if err := verifyModuleArchiveCmd.Exec(cmd.Context(), module); err != nil {
+					log.Fatalf("Unexpected error verifying module %s: %v", module, err)
+				}
+			}
 		}
 	},
 }
