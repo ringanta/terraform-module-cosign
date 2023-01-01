@@ -1,6 +1,5 @@
 /*
 Copyright © 2022 Roy Inganta Ginting <ringanta.ginting@gmail.com>
-
 */
 package cmd
 
@@ -10,31 +9,32 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// verifyCmd represents the verify command
+var verificationKey string
+
 var verifyCmd = &cobra.Command{
 	Use:   "verify",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
+	Short: "Verify Terraform module archive using cosign",
+	Example: `  terraform-module-cosign verify --key <key path>|<key url>|<kms uri> <module archive>
+  # Verify signature of a Terraform module archive in local file system
+  terraform-module-cosign verify --key cosign.pub example-module.zip
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+  # Verify signature a Terraform module archive on S3 bucket
+  terraform-module-cosign verify --key cosign.pub s3::https://example-bucket.s3.ap-southeast-1.amazonaws.com/example-module.zip
+
+  # Verify signature of Terraform modules from a Terraform module
+  terraform-module-cosign verify --key cosign.pub .`,
+	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("verify called")
+		for _, arg := range args {
+			fmt.Printf("verify called with key: %s, suffix: %s, arg: %s\n", verificationKey, moduleSignatureSuffix, arg)
+		}
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(verifyCmd)
 
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// verifyCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// verifyCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	verifyCmd.Flags().StringVar(&verificationKey, "key", "", "path to the public key file or KMS URI")
+	verifyCmd.MarkFlagRequired("key")
+	verifyCmd.Flags().StringVar(&moduleSignatureSuffix, "suffix", ".sig", "suffix for module archive signature")
 }
