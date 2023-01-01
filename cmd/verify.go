@@ -14,6 +14,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/hashicorp/terraform-config-inspect/tfconfig"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
 	"github.com/sigstore/cosign/v2/cmd/cosign/cli/verify"
 	"github.com/spf13/cobra"
@@ -48,28 +49,10 @@ var verifyCmd = &cobra.Command{
 		}
 
 		for _, arg := range args {
-			var modules [1]string
+			var modules []string
 
-			fmt.Printf("verify called with key: %s, suffix: %s, arg: %s\n", verificationKey, moduleSignatureSuffix, arg)
 			if strings.HasPrefix(arg, "s3::") {
-				// Todo: Handle verification of Terraform module archive on S3
 				s3ObjectUrl := strings.TrimPrefix(arg, "s3::")
-				u, err := url.Parse(s3ObjectUrl)
-				if err != nil {
-					log.Fatalf("Failed to parse url [%s]: %v", s3ObjectUrl, err)
-				}
-
-				region, bucket, key, _, err := parseUrl(u)
-				if err != nil {
-					log.Fatal(err.Error())
-				}
-
-				module := path.Base(u.Path)
-
-				s3Downloader, err := newS3Downloader(region)
-				if err != nil {
-					log.Fatalf("Failed to create S3 downloader: %v", err)
-				}
 
 				tempDir, err := os.MkdirTemp("", "terraform-module-cosign")
 				if err != nil {
@@ -77,35 +60,12 @@ var verifyCmd = &cobra.Command{
 				}
 				defer os.RemoveAll(tempDir)
 
-				moduleFile, err := os.Create(filepath.Join(tempDir, module))
+				module, err := getArchiveFromS3(s3ObjectUrl, tempDir)
 				if err != nil {
-					log.Fatalf("Failed to create temporary module archive: %v", err)
+					log.Fatalf("Error downloading module archive from S3: %v", err)
 				}
 
-				_, err = s3Downloader.Download(moduleFile, &s3.GetObjectInput{
-					Bucket: aws.String(bucket),
-					Key:    aws.String(key),
-				})
-				if err != nil {
-					log.Fatalf("Failed to download module archive from S3: %v", err)
-				}
-
-				moduleSignature := fmt.Sprintf("%s%s", module, moduleSignatureSuffix)
-				moduleSignatureFile, err := os.Create(filepath.Join(tempDir, moduleSignature))
-				if err != nil {
-					log.Fatalf("Failed to create temporary module archive signature: %v", err)
-				}
-
-				signatureKey := strings.Replace(key, module, moduleSignature, 1)
-				_, err = s3Downloader.Download(moduleSignatureFile, &s3.GetObjectInput{
-					Bucket: aws.String(bucket),
-					Key:    aws.String(signatureKey),
-				})
-				if err != nil {
-					log.Fatalf("Failed to download module archive signature from S3: %v", err)
-				}
-
-				modules[0] = moduleFile.Name()
+				modules = append(modules, module)
 			} else {
 				fileInfo, err := os.Stat(arg)
 				if err != nil {
@@ -113,9 +73,30 @@ var verifyCmd = &cobra.Command{
 				}
 
 				if fileInfo.IsDir() {
-					// Todo: Assume terraform module directory and read module calls
+					module, diags := tfconfig.LoadModule(arg)
+					if diags != nil {
+						log.Fatalf("Failed to read Terraform module directory: %v", diags)
+					}
+
+					tempDir, err := os.MkdirTemp("", "terraform-module-cosign")
+					if err != nil {
+						log.Fatalf("Failed to create temporary directory: %v", err)
+					}
+					defer os.RemoveAll(tempDir)
+
+					for _, call := range module.ModuleCalls {
+						if strings.HasPrefix(call.Source, "s3::") {
+							s3ObjectUrl := strings.TrimPrefix(call.Source, "s3::")
+							module, err := getArchiveFromS3(s3ObjectUrl, tempDir)
+							if err != nil {
+								log.Fatal(err)
+							}
+
+							modules = append(modules, module)
+						}
+					}
 				} else {
-					modules[0] = arg
+					modules = append(modules, arg)
 				}
 			}
 
@@ -137,4 +118,54 @@ func init() {
 	verifyCmd.Flags().StringVar(&verificationKey, "key", "", "path to the public key file or KMS URI")
 	verifyCmd.MarkFlagRequired("key")
 	verifyCmd.Flags().StringVar(&moduleSignatureSuffix, "suffix", ".sig", "suffix for module archive signature")
+}
+
+func getArchiveFromS3(moduleUrl, tempDir string) (string, error) {
+	s3ObjectUrl := strings.TrimPrefix(moduleUrl, "s3::")
+	u, err := url.Parse(s3ObjectUrl)
+	if err != nil {
+		return "", err
+	}
+
+	region, bucket, key, _, err := parseUrl(u)
+	if err != nil {
+		return "", err
+	}
+
+	module := path.Base(u.Path)
+	s3Downloader, err := newS3Downloader(region)
+	if err != nil {
+		return "", err
+	}
+
+	modulePath := filepath.Join(tempDir, module)
+	moduleFile, err := os.Create(modulePath)
+	if err != nil {
+		return "", err
+	}
+
+	_, err = s3Downloader.Download(moduleFile, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(key),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to download module archive %s: %w", key, err)
+	}
+
+	moduleSignature := fmt.Sprintf("%s%s", module, moduleSignatureSuffix)
+	moduleSignatureFile, err := os.Create(filepath.Join(tempDir, moduleSignature))
+	if err != nil {
+		return "", err
+	}
+
+	signatureKey := strings.Replace(key, module, moduleSignature, 1)
+	_, err = s3Downloader.Download(moduleSignatureFile, &s3.GetObjectInput{
+		Bucket: aws.String(bucket),
+		Key:    aws.String(signatureKey),
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to download module archive signature %s: %v", signatureKey, err)
+	}
+
+	return modulePath, nil
 }
