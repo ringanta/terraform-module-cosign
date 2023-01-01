@@ -5,12 +5,15 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/generate"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/options"
+	"github.com/sigstore/cosign/v2/cmd/cosign/cli/sign"
 	"github.com/spf13/cobra"
 )
 
 var signingKey string
-var moduleArchive string
 var moduleSignatureSuffix string
 
 // signCmd represents the sign command
@@ -27,11 +30,41 @@ var signCmd = &cobra.Command{
   
    # sign Terraform module archive on S3 bucket
    terraform-module-cosign sign --key awskms://[ENDPOINT]/[ID/ALIAS/ARN] s3::https://example-bucket.s3.ap-southeast-1.amazonaws.com/example-module.zip`,
-	Args: cobra.ExactArgs(1),
+	Args: cobra.ArbitraryArgs,
 	Run: func(cmd *cobra.Command, args []string) {
-		moduleArchive = args[0]
-		moduleSignature := fmt.Sprintf("%s%s", moduleArchive, moduleSignatureSuffix)
-		fmt.Printf("sign called with argument %s, will produce signature %s", moduleArchive, moduleSignature)
+		ro := &options.RootOptions{
+			OutputFile: "",
+			Verbose:    false,
+			Timeout:    options.DefaultTimeout,
+		}
+
+		ko := options.KeyOpts{
+			KeyRef:                   signingKey,
+			PassFunc:                 generate.GetPass,
+			Sk:                       false,
+			Slot:                     "",
+			FulcioURL:                "",
+			IDToken:                  "",
+			InsecureSkipFulcioVerify: false,
+			RekorURL:                 "",
+			OIDCIssuer:               "",
+			OIDCClientID:             "",
+			OIDCClientSecret:         "",
+			OIDCRedirectURL:          "",
+			OIDCDisableProviders:     true,
+			BundlePath:               "",
+			SkipConfirmation:         true,
+			TSAServerURL:             "",
+			RFC3161TimestampPath:     "",
+		}
+
+		for _, module := range args {
+			moduleSignature := fmt.Sprintf("%s%s", module, moduleSignatureSuffix)
+			if _, err := sign.SignBlobCmd(ro, ko, module, true, moduleSignature, "", false); err != nil {
+				fmt.Printf("Error signing %s: %s", module, err.Error())
+				os.Exit(1)
+			}
+		}
 	},
 }
 
