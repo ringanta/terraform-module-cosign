@@ -1,6 +1,5 @@
 /*
 Copyright © 2022 Roy Inganta Ginting <ringanta.ginting@gmail.com>
-
 */
 package cmd
 
@@ -10,31 +9,35 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var signingKey string
+var moduleArchive string
+var moduleSignatureSuffix string
+
 // signCmd represents the sign command
 var signCmd = &cobra.Command{
 	Use:   "sign",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Sign a Terraform module archive using cosign and save the signature to a file",
+	Example: `  terraform-module-cosign sign --key <key path>|<kms uri> <module archive>
+	
+  # sign Terraform module archive using local private key
+  terraform-module-cosign sign --key private.key example-module.zip
+	
+  # sign Terraform module archive using key from AWS KMS
+  terraform-module-cosign sign --key awskms://[ENDPOINT]/[ID/ALIAS/ARN] example-module.zip
+  
+   # sign Terraform module archive on S3 bucket
+   terraform-module-cosign sign --key awskms://[ENDPOINT]/[ID/ALIAS/ARN] s3::https://example-bucket.s3.ap-southeast-1.amazonaws.com/example-module.zip`,
+	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("sign called")
+		moduleArchive = args[0]
+		moduleSignature := fmt.Sprintf("%s%s", moduleArchive, moduleSignatureSuffix)
+		fmt.Printf("sign called with argument %s, will produce signature %s", moduleArchive, moduleSignature)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(signCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// signCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// signCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	signCmd.Flags().StringVar(&signingKey, "key", "", "path to the private key file or KMS URI")
+	signCmd.MarkFlagRequired("key")
+	signCmd.Flags().StringVar(&moduleSignatureSuffix, "suffix", ".sig", "suffix for module archive signature")
 }
