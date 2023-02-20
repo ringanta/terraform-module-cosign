@@ -3,7 +3,8 @@ module github.com/ringanta/terraform-module-cosign
 go 1.19
 
 require (
-	github.com/aws/aws-sdk-go v1.44.147
+	github.com/aws/aws-sdk-go v1.44.204
+	github.com/hashicorp/terraform-config-inspect v0.0.0-20221020162138-81db043ad408
 	github.com/spf13/cobra v1.6.1
 )
 
@@ -112,7 +113,6 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.0.0 // indirect
-	github.com/hashicorp/terraform-config-inspect v0.0.0-20221020162138-81db043ad408 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/in-toto/in-toto-golang v0.5.0 // indirect
 	github.com/jedisct1/go-minisign v0.0.0-20211028175153-1c139d1cc84b // indirect
